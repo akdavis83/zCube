@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Background Video Playlist + Glitchy 3D Cube</title>
+  <style>
+    /* --- Page reset --- */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* keep it clean; no scrollbars */
+      background: #000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* --- Background video --- */
+    .video-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+    }
+    video#bgVideo {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      min-width: 100%;
+      min-height: 100%;
+      width: auto;
+      height: auto;
+      transform: translate(-50%, -50%);
+      object-fit: cover;
+      filter: contrast(105%) saturate(110%);
+      opacity: 0.85; /* let the cube pop a bit */
+      pointer-events: none; /* fully passive */
+    }
+
+    /* --- Three.js overlay --- */
+    #three-container {
+      position: fixed;
+      inset: 0;
+      z-index: 1; /* above video */
+      pointer-events: none; /* let clicks pass through */
+    }
+
+    /* --- Minimal start overlay if autoplay is blocked --- */
+    #startOverlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      z-index: 2;
+      text-align: center;
+      padding: 2rem;
+      backdrop-filter: blur(2px);
+    }
+    #startOverlay button {
+      pointer-events: auto;
+      border: 0;
+      padding: 0.9rem 1.2rem;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Background video -->
+  <div class="video-wrap">
+    <video id="bgVideo" autoplay muted playsinline></video>
+  </div>
+
+  <!-- Three.js overlay target -->
+  <div id="three-container"></div>
+
+  <!-- Start overlay (shown only if autoplay is blocked) -->
+  <div id="startOverlay">
+    <div>
+      <h1 style="margin-top:0">Tap to Start</h1>
+      <p>Autoplay was blocked by your browser. Tap the button to start playback.</p>
+      <button id="startBtn">Start Background</button>
+    </div>
+  </div>
+
+  <!-- Three.js (ESM build) -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
+
+    // ====== BACKGROUND VIDEO PLAYLIST ======
+    const video = document.getElementById('bgVideo');
+
+    // Put your video files here (relative to this HTML). Example expects a "videos" folder.
+    // You can include .mp4, .webm, or .mov that your browser supports.
+    const playlist = [
+   
+      'Glitch-1.mp4',
+      'Glitch-2.mp4',
+      'Random-Numbers-01.mp4',
+      'Random-Numbers-02.mp4',
+      'Random-Numbers-03.mp4',
+      'Random-Numbers-04.mp4',
+      
+    ];
+
+    let currentIndex = 0;
+    function setSource(idx) {
+      currentIndex = (idx + playlist.length) % playlist.length;
+      const src = playlist[currentIndex];
+      video.src = src;
+      // Attempt play; if it fails (autoplay policies), show the start overlay.
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise.catch(() => {
+          document.getElementById('startOverlay').style.display = 'flex';
+        });
+      }
+    }
+
+    video.addEventListener('ended', () => {
+      setSource(currentIndex + 1);
+    });
+
+    // Kick off playlist
+    setSource(0);
+
+    // Tap-to-start handler if needed
+    document.getElementById('startBtn').addEventListener('click', () => {
+      document.getElementById('startOverlay').style.display = 'none';
+      video.muted = true; // ensure muted for autoplay
+      setSource(currentIndex);
+    });
+
+    // ====== THREE.JS SCENE (GLITCHY CUBE) ======
+    const container = document.getElementById('three-container');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 4);
+    scene.add(camera);
+
+    // Lights
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir.position.set(5, 5, 6);
+    scene.add(dir);
+
+    // Create a dynamic canvas texture to simulate glitch
+    const texSize = 256;
+    const texCanvas = document.createElement('canvas');
+    texCanvas.width = texSize;
+    texCanvas.height = texSize;
+    const ctx = texCanvas.getContext('2d');
+
+    function drawGlitchTexture(t) {
+      // background
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, texSize, texSize);
+
+      // glitchy horizontal + vertical bands
+      const bands = 28;
+      for (let i = 0; i < bands; i++) {
+        const y = Math.floor((i / bands) * texSize);
+        const h = Math.max(1, Math.floor(Math.random() * 6));
+        const xShift = Math.floor((Math.sin(t * 0.002 + i) + Math.random() * 2 - 1) * 16);
+        // random neon-ish color
+        const r = 180 + Math.floor(Math.random() * 75);
+        const g = 120 + Math.floor(Math.random() * 100);
+        const b = 200 + Math.floor(Math.random() * 55);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(Math.max(0, xShift), y, texSize, h);
+      }
+
+      // sporadic vertical glitches
+      for (let j = 0; j < 20; j++) {
+        const x = Math.floor(Math.random() * texSize);
+        const w = Math.max(1, Math.floor(Math.random() * 3));
+        const yShift = Math.floor((Math.cos(t * 0.003 + j) + Math.random() * 2 - 1) * 14);
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(x, Math.max(0, yShift), w, texSize);
+      }
+
+      // subtle scanlines
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      for (let y = 0; y < texSize; y += 2) {
+        ctx.fillRect(0, y, texSize, 1);
+      }
+    }
+
+    drawGlitchTexture(0);
+    const glitchTexture = new THREE.CanvasTexture(texCanvas);
+    glitchTexture.wrapS = glitchTexture.wrapT = THREE.RepeatWrapping;
+    glitchTexture.anisotropy = 4;
+
+    // Material that leverages the dynamic texture in multiple channels to look intricate
+    const material = new THREE.MeshPhysicalMaterial({
+      map: glitchTexture,
+      emissive: new THREE.Color(0xffffff),
+      emissiveMap: glitchTexture,
+      emissiveIntensity: 0.35,
+      roughness: 0.25,
+      metalness: 0.9,
+      clearcoat: 0.5,
+      clearcoatRoughness: 0.2,
+      transmission: 0.1,
+      transparent: true,
+      opacity: 0.95
+    });
+
+    // Subdivide the cube a little so lighting feels richer
+    const cubeGeo = new THREE.BoxGeometry(1.7, 1.7, 1.7, 4, 4, 4);
+    const cube = new THREE.Mesh(cubeGeo, material);
+    scene.add(cube);
+
+    // Add thin "frame" edges for extra detail (not a simple wireframe)
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.7, 1.7, 1.7)),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+    );
+    scene.add(edges);
+
+    // Responsive
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animate
+    let t = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      t += 16.67; // approx ms/frame
+
+      // update glitch texture every frame
+      drawGlitchTexture(t);
+      glitchTexture.needsUpdate = true;
+
+      // animate texture scroll/offset to sell the glitch effect
+      const scrollSpeed = 0.0008;
+      glitchTexture.offset.x = (glitchTexture.offset.x + scrollSpeed * 6) % 1;
+      glitchTexture.offset.y = (glitchTexture.offset.y + scrollSpeed * 4) % 1;
+
+      // cube motion
+      cube.rotation.x += 0.005;
+      cube.rotation.y += 0.007;
+      edges.rotation.copy(cube.rotation);
+
+      // subtle breathing scale
+      const s = 1 + Math.sin(performance.now() * 0.0015) * 0.04;
+      cube.scale.setScalar(s);
+      edges.scale.setScalar(s * 1.001);
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
